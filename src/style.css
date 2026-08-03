@@ -51,6 +51,7 @@ h1 {
   width: 100%;
   padding: 0.4rem;
   overflow: hidden;
+  touch-action: manipulation;
   border: 1px solid #52617a;
   border-radius: 1rem;
   background: #172033;
@@ -132,4 +133,74 @@ button:focus-visible {
   #app {
     padding-top: 2rem;
   }
+}
+
+.tile,
+.move {
+  cursor: pointer;
+  outline: none;
+}
+
+.tile--selected .tile__square {
+  stroke: #fff7a8;
+  stroke-width: 5;
+  filter: drop-shadow(0 0 7px rgb(255 235 89 / 95%)) drop-shadow(0 3px 3px rgb(0 0 0 / 35%));
+}
+
+.tile:focus-visible .tile__square,
+.move:focus-visible .move__preview {
+  stroke: #ffffff;
+  stroke-width: 5;
+}
+
+.move__preview {
+  fill: rgb(255 235 89 / 28%);
+  stroke: #fff07a;
+  stroke-width: 3;
+  stroke-dasharray: 7 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.move__handle {
+  fill: rgb(255 240 122 / 88%);
+  stroke: #172033;
+  stroke-width: 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.tile--flipping {
+  pointer-events: none;
+}
+
+.tile__face-bounds {
+  fill: transparent;
+}
+
+.tile--flipping .tile__face {
+  transform-box: fill-box;
+  animation: flip-north-south 350ms ease-in-out forwards;
+}
+
+.tile--flip-north .tile__face { transform-origin: 50% 0%; }
+.tile--flip-east .tile__face { transform-origin: 100% 50%; }
+.tile--flip-south .tile__face { transform-origin: 50% 100%; }
+.tile--flip-west .tile__face { transform-origin: 0% 50%; }
+
+.tile--flip-east .tile__face,
+.tile--flip-west .tile__face {
+  animation-name: flip-east-west;
+}
+
+@keyframes flip-north-south {
+  from { transform: rotateX(0deg); }
+  to { transform: rotateX(180deg); }
+}
+
+@keyframes flip-east-west {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(180deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile--flipping .tile__face { animation: none; }
 }
