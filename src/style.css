@@ -1,0 +1,135 @@
+:root {
+  color: #eef4ff;
+  background: #0d1423;
+  font-family:
+    Inter, ui-rounded, "SF Pro Rounded", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 50% 0%, #243453 0, transparent 38rem),
+    #0d1423;
+}
+
+button {
+  font: inherit;
+}
+
+#app {
+  display: flex;
+  width: min(100%, 34rem);
+  margin: 0 auto;
+  padding: 1.25rem 0.75rem 2rem;
+  flex-direction: column;
+  align-items: center;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 9vw, 3rem);
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+
+.intro {
+  margin: 0.55rem 0 1rem;
+  color: #b9c7dd;
+  font-size: 0.95rem;
+}
+
+.board-frame {
+  width: 100%;
+  padding: 0.4rem;
+  overflow: hidden;
+  border: 1px solid #52617a;
+  border-radius: 1rem;
+  background: #172033;
+  box-shadow: 0 1.25rem 3rem rgb(0 0 0 / 30%);
+}
+
+.board {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 2;
+  border-radius: 0.65rem;
+  overflow: hidden;
+}
+
+.board__background {
+  fill: #172033;
+}
+
+.grid__cell {
+  fill: #243149;
+  stroke: #52617a;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.tile__square {
+  stroke: rgb(255 255 255 / 34%);
+  stroke-width: 1.5;
+  filter: drop-shadow(0 3px 3px rgb(0 0 0 / 35%));
+  vector-effect: non-scaling-stroke;
+}
+
+.tile__label {
+  fill: #172033;
+  font-size: 25px;
+  font-weight: 800;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+
+.status {
+  min-height: 1.5em;
+  margin: 0.9rem 0 0.75rem;
+  color: #cbd7ea;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+button {
+  min-width: 7rem;
+  min-height: 2.75rem;
+  padding: 0.65rem 1.25rem;
+  border: 1px solid #71819c;
+  border-radius: 999px;
+  color: #eef4ff;
+  background: #243149;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    transform 120ms ease;
+}
+
+button:hover {
+  background: #34435e;
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button:focus-visible {
+  outline: 3px solid #22b8cf;
+  outline-offset: 3px;
+}
+
+@media (min-width: 40rem) {
+  #app {
+    padding-top: 2rem;
+  }
+}
