@@ -1,5 +1,5 @@
 import "./style.css";
-import { getLegalGroupFlips, isEdgeConnected, type GroupFlip, type GroupHinge } from "./geometry";
+import { getLegalGroupFlips, isEdgeConnected, type GroupFlip, type GroupHinge, type Vertex } from "./geometry";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const BOARD_COLUMNS = 8;
@@ -15,7 +15,7 @@ const INITIAL_TILES: ReadonlyArray<Tile> = [
   { id: 1, column: 3, row: 6, color: "#22b8cf" },
   { id: 2, column: 4, row: 6, color: "#ff6b6b" },
   { id: 3, column: 3, row: 7, color: "#f4b942" },
-  { id: 4, column: 4, row: 7, color: "#9b5de5" },
+  { id: 4, column: 5, row: 7, color: "#9b5de5" },
   { id: 5, column: 3, row: 8, color: "#4dd4ac" },
 ];
 
@@ -83,7 +83,7 @@ function beginFlip(move: GroupFlip): void {
   if (activeFlip || selectedTileIds.size === 0) return;
   const tileIds = tiles.filter(({ id }) => selectedTileIds.has(id)).map(({ id }) => id);
   activeFlip = { tileIds, move };
-  renderBoard(`Selected group is flipping ${move.hinge.side}.`);
+  renderBoard(`Selected group is flipping ${hingeDirection(move.hinge)}.`);
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) settleFlip();
   else flipTimer = window.setTimeout(settleFlip, FLIP_DURATION_MS);
 }
@@ -96,7 +96,16 @@ function settleFlip(): void {
     if (tile && destination) { tile.column = destination.column; tile.row = destination.row; }
   });
   activeFlip = null; selectedTileIds = new Set();
-  renderBoard(`Group flipped ${move.hinge.side}. Selection cleared.`);
+  renderBoard(`Group flipped ${hingeDirection(move.hinge)}. Selection cleared.`);
+}
+
+function hingeDirection(hinge: GroupHinge): string {
+  return hinge.orientation === "diagonal" ? "diagonally" : hinge.side;
+}
+
+function moveLabel(hinge: GroupHinge): string {
+  if (hinge.orientation !== "diagonal") return `Flip selected group ${hinge.side}`;
+  return `Flip selected group diagonally along hinge (${hinge.start.x},${hinge.start.y})–(${hinge.end.x},${hinge.end.y})`;
 }
 
 function renderBoard(message?: string): void {
@@ -119,9 +128,11 @@ function renderBoard(message?: string): void {
   if (activeFlip) {
     flipGroup.classList.add("tile-group--flipping", "tile-group--flip-" + activeFlip.move.hinge.orientation);
     const hinge = activeFlip.move.hinge;
-    flipGroup.style.transformOrigin = hinge.orientation === "horizontal"
-      ? "0px " + hinge.line * CELL_SIZE + "px"
-      : hinge.line * CELL_SIZE + "px 0px";
+    const hingeStart = hingeGridSegment(hinge).start;
+    flipGroup.style.transformOrigin = hingeStart.x * CELL_SIZE + "px " + hingeStart.y * CELL_SIZE + "px";
+    if (hinge.orientation === "diagonal") {
+      flipGroup.classList.add(hinge.slope === 1 ? "tile-group--flip-diagonal-ascending" : "tile-group--flip-diagonal-descending");
+    }
   }
   for (const tile of tiles) {
     const element = createTileElement(tile);
@@ -152,7 +163,7 @@ function createMoveLayer(moves: GroupFlip[]): SVGGElement {
   const layer = createSvgElement("g"); layer.classList.add("moves");
   for (const move of moves) {
     const group = createSvgElement("g"); group.classList.add("move"); group.setAttribute("role", "button"); group.setAttribute("tabindex", "0");
-    group.setAttribute("aria-label", `Flip selected group ${move.hinge.side}`);
+    group.setAttribute("aria-label", moveLabel(move.hinge));
     group.addEventListener("click", (event) => { event.stopPropagation(); beginFlip(move); });
     group.addEventListener("keydown", (event) => activateOnKeyboard(event, () => beginFlip(move)));
     for (const destination of move.destinations) {
@@ -166,11 +177,16 @@ function createHingeHandle(hinge: GroupHinge): SVGGElement {
   const group = createSvgElement("g");
   const hitTarget = createSvgElement("line"); hitTarget.classList.add("move__hit-target");
   const line = createSvgElement("line"); line.classList.add("move__handle");
-  const attributes = hinge.orientation === "horizontal"
-    ? { x1: hinge.start * CELL_SIZE, x2: hinge.end * CELL_SIZE, y1: hinge.line * CELL_SIZE, y2: hinge.line * CELL_SIZE }
-    : { x1: hinge.line * CELL_SIZE, x2: hinge.line * CELL_SIZE, y1: hinge.start * CELL_SIZE, y2: hinge.end * CELL_SIZE };
+  const segment = hingeGridSegment(hinge);
+  const attributes = { x1: segment.start.x * CELL_SIZE, x2: segment.end.x * CELL_SIZE, y1: segment.start.y * CELL_SIZE, y2: segment.end.y * CELL_SIZE };
   setAttributes(hitTarget, attributes); setAttributes(line, attributes); group.append(hitTarget, line);
   return group;
+}
+function hingeGridSegment(hinge: GroupHinge): { start: Vertex; end: Vertex } {
+  if (hinge.orientation === "diagonal") return hinge;
+  return hinge.orientation === "horizontal"
+    ? { start: { x: hinge.start, y: hinge.line }, end: { x: hinge.end, y: hinge.line } }
+    : { start: { x: hinge.line, y: hinge.start }, end: { x: hinge.line, y: hinge.end } };
 }
 function setAttributes(element: Element, attributes: Record<string, number>): void { for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, String(value)); }
 function activateOnKeyboard(event: KeyboardEvent, activate: () => void): void { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); activate(); } }
