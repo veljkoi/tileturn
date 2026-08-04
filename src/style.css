@@ -159,6 +159,7 @@ button:focus-visible {
   stroke-width: 3;
   stroke-dasharray: 7 5;
   vector-effect: non-scaling-stroke;
+  pointer-events: none;
 }
 
 .move__hit-target {
@@ -175,6 +176,7 @@ button:focus-visible {
   stroke-width: 14;
   stroke-linecap: round;
   vector-effect: non-scaling-stroke;
+  pointer-events: none;
 }
 
 .tile-group--flipping {
@@ -185,6 +187,14 @@ button:focus-visible {
 
 .tile-group--flip-vertical {
   animation-name: flip-group-vertical;
+}
+
+.tile-group--flip-diagonal-ascending {
+  animation-name: flip-group-diagonal-ascending;
+}
+
+.tile-group--flip-diagonal-descending {
+  animation-name: flip-group-diagonal-descending;
 }
 
 .tile__face-bounds {
@@ -199,6 +209,16 @@ button:focus-visible {
 @keyframes flip-group-vertical {
   from { transform: rotateY(0deg); }
   to { transform: rotateY(180deg); }
+}
+
+@keyframes flip-group-diagonal-ascending {
+  from { transform: rotate3d(1, 1, 0, 0deg); }
+  to { transform: rotate3d(1, 1, 0, 180deg); }
+}
+
+@keyframes flip-group-diagonal-descending {
+  from { transform: rotate3d(1, -1, 0, 0deg); }
+  to { transform: rotate3d(1, -1, 0, 180deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {
