@@ -130,115 +130,62 @@ export type GroupHinge = OrthogonalGroupHinge | DiagonalHinge;
 
 export type GroupFlip = { hinge: GroupHinge; destinations: GridSquare[] };
 
-export function getExposedGroupHinges(group: ReadonlyArray<GridSquare>): OrthogonalGroupHinge[] {
-  const selected = new Set(group.map(squareKey));
-  const segments: OrthogonalGroupHinge[] = [];
-  for (const square of group) {
-    const edges: Array<{ neighbor: GridSquare; hinge: OrthogonalGroupHinge }> = [
-      { neighbor: { column: square.column, row: square.row - 1 }, hinge: { orientation: "horizontal", line: square.row, start: square.column, end: square.column + 1, side: "north" } },
-      { neighbor: { column: square.column + 1, row: square.row }, hinge: { orientation: "vertical", line: square.column + 1, start: square.row, end: square.row + 1, side: "east" } },
-      { neighbor: { column: square.column, row: square.row + 1 }, hinge: { orientation: "horizontal", line: square.row + 1, start: square.column, end: square.column + 1, side: "south" } },
-      { neighbor: { column: square.column - 1, row: square.row }, hinge: { orientation: "vertical", line: square.column, start: square.row, end: square.row + 1, side: "west" } },
-    ];
-    for (const edge of edges) if (!selected.has(squareKey(edge.neighbor))) segments.push(edge.hinge);
-  }
-  const buckets = new Map<string, OrthogonalGroupHinge[]>();
-  for (const hinge of segments) {
-    const key = hinge.orientation + ":" + hinge.line + ":" + hinge.side;
-    const bucket = buckets.get(key) ?? [];
-    bucket.push(hinge);
-    buckets.set(key, bucket);
-  }
-  const merged: OrthogonalGroupHinge[] = [];
-  for (const bucket of buckets.values()) {
-    bucket.sort((a, b) => a.start - b.start);
-    let previous: OrthogonalGroupHinge | undefined;
-    for (const hinge of bucket) {
-      if (previous && previous.end === hinge.start) previous.end = hinge.end;
-      else { previous = { ...hinge }; merged.push(previous); }
-    }
-  }
-  return merged;
-}
-
-function tilesOwningVertex(group: ReadonlyArray<GridSquare>, vertex: Vertex): GridSquare[] {
-  return group.filter(({ column, row }) =>
-    (vertex.x === column || vertex.x === column + 1) &&
-    (vertex.y === row || vertex.y === row + 1),
-  );
-}
-
-export function verticesBelongToDifferentTiles(
-  group: ReadonlyArray<GridSquare>,
-  start: Vertex,
-  end: Vertex,
-): boolean {
-  const startOwners = tilesOwningVertex(group, start);
-  const endOwners = tilesOwningVertex(group, end);
-  return startOwners.some((first) =>
-    endOwners.some((second) => squareKey(first) !== squareKey(second)),
-  );
-}
-
-function boundaryVertices(group: ReadonlyArray<GridSquare>): Vertex[] {
+function tileVertices(group: ReadonlyArray<GridSquare>): Vertex[] {
   const vertices = new Map<string, Vertex>();
   for (const { column, row } of group) {
     for (const vertex of [
-      { x: column, y: row },
-      { x: column + 1, y: row },
-      { x: column, y: row + 1 },
-      { x: column + 1, y: row + 1 },
+      { x: column, y: row }, { x: column + 1, y: row },
+      { x: column, y: row + 1 }, { x: column + 1, y: row + 1 },
     ]) vertices.set(`${vertex.x},${vertex.y}`, vertex);
   }
-  return [...vertices.values()].filter((vertex) => {
-    const ownershipCount = tilesOwningVertex(group, vertex).length;
-    return ownershipCount > 0 && ownershipCount < 4;
+  return [...vertices.values()];
+}
+
+function cross(origin: Vertex, first: Vertex, second: Vertex): number {
+  return (first.x - origin.x) * (second.y - origin.y) -
+    (first.y - origin.y) * (second.x - origin.x);
+}
+
+/** Returns maximal-edge hull vertices in cyclic order, without a repeated endpoint. */
+export function getConvexHull(group: ReadonlyArray<GridSquare>): Vertex[] {
+  const points = tileVertices(group).sort((a, b) => a.x - b.x || a.y - b.y);
+  if (points.length <= 1) return points;
+  const halfHull = (ordered: ReadonlyArray<Vertex>): Vertex[] => {
+    const half: Vertex[] = [];
+    for (const point of ordered) {
+      while (half.length >= 2 && cross(half[half.length - 2], half[half.length - 1], point) <= 0) half.pop();
+      half.push(point);
+    }
+    return half;
+  };
+  const lower = halfHull(points);
+  const upper = halfHull([...points].reverse());
+  lower.pop();
+  upper.pop();
+  return [...lower, ...upper];
+}
+
+/** Finds eligible maximal edges of the selected tiles convex hull. */
+export function getGroupHinges(group: ReadonlyArray<GridSquare>): GroupHinge[] {
+  if (group.length < 1 || group.length > 5 || !isEdgeConnected(group) ||
+      group.some(({ column, row }) => !Number.isInteger(column) || !Number.isInteger(row))) return [];
+  const hull = getConvexHull(group);
+  const center = {
+    x: group.reduce((sum, square) => sum + square.column + 0.5, 0) / group.length,
+    y: group.reduce((sum, square) => sum + square.row + 0.5, 0) / group.length,
+  };
+  return hull.flatMap((start, index): GroupHinge[] => {
+    const end = hull[(index + 1) % hull.length];
+    const deltaX = end.x - start.x;
+    const deltaY = end.y - start.y;
+    if (deltaY === 0) return [{ orientation: "horizontal", line: start.y, start: Math.min(start.x, end.x), end: Math.max(start.x, end.x), side: center.y > start.y ? "north" : "south" }];
+    if (deltaX === 0) return [{ orientation: "vertical", line: start.x, start: Math.min(start.y, end.y), end: Math.max(start.y, end.y), side: center.x > start.x ? "west" : "east" }];
+    if (Math.abs(deltaX) !== Math.abs(deltaY)) return [];
+    const [orderedStart, orderedEnd] = start.x < end.x ? [start, end] : [end, start];
+    return [{ orientation: "diagonal", slope: (orderedEnd.y - orderedStart.y) / (orderedEnd.x - orderedStart.x) as -1 | 1, start: orderedStart, end: orderedEnd }];
   });
 }
 
-export function isConcaveTileGroup(group: ReadonlyArray<GridSquare>): boolean {
-  if (group.length < 3 || group.length > 5 || !isEdgeConnected(group)) return false;
-  return boundaryVertices(group).some((vertex) => tilesOwningVertex(group, vertex).length === 3);
-}
-
-function segmentIsContained(group: ReadonlyArray<GridSquare>, start: Vertex, end: Vertex): boolean {
-  const selected = new Set(group.map(squareKey));
-  const steps = Math.abs(end.x - start.x);
-  for (let step = 0; step < steps; step += 1) {
-    const t = (step + 0.5) / steps;
-    const point = {
-      x: start.x + (end.x - start.x) * t,
-      y: start.y + (end.y - start.y) * t,
-    };
-    if (!selected.has(squareKey({ column: Math.floor(point.x), row: Math.floor(point.y) }))) return false;
-  }
-  return true;
-}
-
-export function getEligibleDiagonalHinges(group: ReadonlyArray<GridSquare>): DiagonalHinge[] {
-  if (!isConcaveTileGroup(group)) return [];
-  const vertices = boundaryVertices(group);
-  const hingesBySupportingLine = new Map<string, DiagonalHinge>();
-  for (let firstIndex = 0; firstIndex < vertices.length; firstIndex += 1) {
-    for (let secondIndex = firstIndex + 1; secondIndex < vertices.length; secondIndex += 1) {
-      let start = vertices[firstIndex];
-      let end = vertices[secondIndex];
-      const deltaX = end.x - start.x;
-      const deltaY = end.y - start.y;
-      if (Math.abs(deltaX) !== Math.abs(deltaY) || deltaX === 0) continue;
-      if (!verticesBelongToDifferentTiles(group, start, end) || !segmentIsContained(group, start, end)) continue;
-      if (start.x > end.x || (start.x === end.x && start.y > end.y)) [start, end] = [end, start];
-      const slope = (end.y - start.y) / (end.x - start.x) as -1 | 1;
-      const intercept = slope === 1 ? start.y - start.x : start.y + start.x;
-      const supportingLineKey = `${slope}:${intercept}`;
-      const existing = hingesBySupportingLine.get(supportingLineKey);
-      if (!existing || Math.abs(end.x - start.x) > Math.abs(existing.end.x - existing.start.x)) {
-        hingesBySupportingLine.set(supportingLineKey, { orientation: "diagonal", slope, start, end });
-      }
-    }
-  }
-  return [...hingesBySupportingLine.values()];
-}
 
 export function reflectGroupAcrossHinge(group: ReadonlyArray<GridSquare>, hinge: GroupHinge): GridSquare[] {
   if (hinge.orientation === "diagonal") {
@@ -259,11 +206,10 @@ export function reflectGroupAcrossHinge(group: ReadonlyArray<GridSquare>, hinge:
 }
 
 export function getLegalGroupFlips(board: BoardSize, group: ReadonlyArray<GridSquare>, occupiedSquares: ReadonlyArray<GridSquare>): GroupFlip[] {
-  if (group.length === 0 || !isEdgeConnected(group) || group.some(({ column, row }) => !Number.isInteger(column) || !Number.isInteger(row))) return [];
   const occupied = new Set(occupiedSquares.map(squareKey));
   const seen = new Set<string>();
   const moves: GroupFlip[] = [];
-  for (const hinge of [...getExposedGroupHinges(group), ...getEligibleDiagonalHinges(group)]) {
+  for (const hinge of getGroupHinges(group)) {
     const destinations = reflectGroupAcrossHinge(group, hinge);
     const legal = destinations.every(({ column, row }) => Number.isInteger(column) && Number.isInteger(row) && column >= 0 && column < board.columns && row >= 0 && row < board.rows && !occupied.has(squareKey({ column, row })));
     const footprint = destinations.map(squareKey).sort().join(";");
