@@ -8,21 +8,24 @@ const CELL_SIZE = 64;
 const TILE_INSET = 4;
 const FLIP_DURATION_MS = 350;
 
-type Tile = { id: number; column: number; row: number; color: string };
+type Tile = { id: number; column: number; row: number };
 type ActiveFlip = { tileIds: number[]; move: GroupFlip };
 
 const INITIAL_TILES: ReadonlyArray<Tile> = [
-  { id: 1, column: 3, row: 6, color: "#22b8cf" },
-  { id: 2, column: 4, row: 6, color: "#ff6b6b" },
-  { id: 3, column: 3, row: 7, color: "#f4b942" },
-  { id: 4, column: 5, row: 7, color: "#9b5de5" },
-  { id: 5, column: 3, row: 8, color: "#4dd4ac" },
+  { id: 1, column: 3, row: 6 },
+  { id: 2, column: 4, row: 6 },
+  { id: 3, column: 3, row: 7 },
+  { id: 4, column: 5, row: 7 },
+  { id: 5, column: 3, row: 8 },
 ];
 
 let tiles = cloneInitialTiles();
 let selectedTileIds = new Set<number>();
 let activeFlip: ActiveFlip | null = null;
 let flipTimer: number | undefined;
+type SelectionDrag = { pointerId: number; startTileId: number; startX: number; startY: number; dragging: boolean };
+let selectionDrag: SelectionDrag | null = null;
+let suppressNextTileClick = false;
 const app = document.querySelector<HTMLElement>("#app");
 if (!app) throw new Error("Tileturn requires an #app element.");
 
@@ -42,6 +45,9 @@ resetButton.textContent = "Reset";
 resetButton.addEventListener("click", resetBoard);
 app.append(heading, intro, boardFrame, status, resetButton);
 renderBoard("The board is ready. Select a tile to build a group.");
+window.addEventListener("pointermove", continueSelectionDrag, { passive: false });
+window.addEventListener("pointerup", finishSelectionDrag);
+window.addEventListener("pointercancel", finishSelectionDrag);
 
 function cloneInitialTiles(): Tile[] { return INITIAL_TILES.map((tile) => ({ ...tile })); }
 function resetBoard(): void {
@@ -63,6 +69,62 @@ function changeSelection(tileId: number): void {
   if (next.size === 0) renderBoard("Selection cleared.");
   else renderBoard(selectionGuidance());
 }
+function beginSelectionDrag(event: PointerEvent, tileId: number): void {
+  if (activeFlip || event.button !== 0) return;
+  selectionDrag = { pointerId: event.pointerId, startTileId: tileId, startX: event.clientX, startY: event.clientY, dragging: false };
+  (event.currentTarget as Element).setPointerCapture(event.pointerId);
+}
+
+function continueSelectionDrag(event: PointerEvent): void {
+  const drag = selectionDrag;
+  if (!drag || drag.pointerId !== event.pointerId) return;
+  if (!drag.dragging && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 8) return;
+  if (!drag.dragging) {
+    drag.dragging = true;
+    suppressNextTileClick = true;
+    startDragSelection(drag.startTileId);
+    document.querySelector(".moves")?.remove();
+  }
+  event.preventDefault();
+  const tileElement = document.elementFromPoint(event.clientX, event.clientY)?.closest<SVGGElement>(".tile");
+  const tileId = Number(tileElement?.dataset.tile);
+  if (Number.isInteger(tileId)) addTileToDragSelection(tileId);
+}
+
+function finishSelectionDrag(event: PointerEvent): void {
+  const drag = selectionDrag;
+  if (!drag || drag.pointerId !== event.pointerId) return;
+  selectionDrag = null;
+  if (!drag.dragging) return;
+  event.preventDefault();
+  renderBoard(selectionGuidance());
+  window.setTimeout(() => { suppressNextTileClick = false; }, 0);
+}
+
+function startDragSelection(tileId: number): void {
+  if (selectedTileIds.has(tileId)) return;
+  const extended = new Set(selectedTileIds).add(tileId);
+  const extendedTiles = tiles.filter(({ id }) => extended.has(id));
+  selectedTileIds = extended.size <= 5 && isEdgeConnected(extendedTiles) ? extended : new Set([tileId]);
+  syncDraggedSelection();
+}
+
+function addTileToDragSelection(tileId: number): void {
+  if (selectedTileIds.has(tileId) || selectedTileIds.size >= 5) return;
+  const next = new Set(selectedTileIds).add(tileId);
+  if (!isEdgeConnected(tiles.filter(({ id }) => next.has(id)))) return;
+  selectedTileIds = next;
+  syncDraggedSelection();
+}
+
+function syncDraggedSelection(): void {
+  for (const element of document.querySelectorAll<SVGGElement>(".tile")) {
+    const selected = selectedTileIds.has(Number(element.dataset.tile));
+    element.classList.toggle("tile--selected", selected);
+    element.setAttribute("aria-pressed", String(selected));
+  }
+}
+
 function clearSelection(): void {
   if (activeFlip || selectedTileIds.size === 0) return;
   selectedTileIds = new Set(); renderBoard("Selection cleared.");
@@ -150,13 +212,13 @@ function createTileElement(tile: Tile): SVGGElement {
   const group = createSvgElement("g"); const selected = selectedTileIds.has(tile.id);
   group.classList.add("tile"); if (selected) group.classList.add("tile--selected");
   group.dataset.tile = String(tile.id); group.setAttribute("role", "button"); group.setAttribute("tabindex", activeFlip ? "-1" : "0"); group.setAttribute("aria-pressed", String(selected));
-  group.setAttribute("aria-label", `Tile ${tile.id} at column ${tile.column + 1}, row ${tile.row + 1}`);
+  group.setAttribute("aria-label", "Tile at column " + (tile.column + 1) + ", row " + (tile.row + 1));
   group.setAttribute("transform", `translate(${tile.column * CELL_SIZE} ${tile.row * CELL_SIZE})`);
-  group.addEventListener("click", (event) => { event.stopPropagation(); changeSelection(tile.id); });
+  group.addEventListener("pointerdown", (event) => beginSelectionDrag(event, tile.id));
+  group.addEventListener("click", (event) => { event.stopPropagation(); if (suppressNextTileClick) { suppressNextTileClick = false; return; } changeSelection(tile.id); });
   group.addEventListener("keydown", (event) => activateOnKeyboard(event, () => changeSelection(tile.id)));
-  const square = createSvgElement("rect"); square.classList.add("tile__square"); setAttributes(square, { x: TILE_INSET, y: TILE_INSET, width: CELL_SIZE - TILE_INSET * 2, height: CELL_SIZE - TILE_INSET * 2, rx: 9 }); square.setAttribute("fill", tile.color);
-  const label = createSvgElement("text"); label.classList.add("tile__label"); setAttributes(label, { x: CELL_SIZE / 2, y: CELL_SIZE / 2 }); label.textContent = String(tile.id);
-  const face = createSvgElement("g"); face.classList.add("tile__face"); const bounds = createSvgElement("rect"); bounds.classList.add("tile__face-bounds"); setAttributes(bounds, { width: CELL_SIZE, height: CELL_SIZE }); face.append(bounds, square, label); group.append(face); return group;
+  const square = createSvgElement("rect"); square.classList.add("tile__square"); setAttributes(square, { x: TILE_INSET, y: TILE_INSET, width: CELL_SIZE - TILE_INSET * 2, height: CELL_SIZE - TILE_INSET * 2, rx: 9 });
+  const face = createSvgElement("g"); face.classList.add("tile__face"); const bounds = createSvgElement("rect"); bounds.classList.add("tile__face-bounds"); setAttributes(bounds, { width: CELL_SIZE, height: CELL_SIZE }); face.append(bounds, square); group.append(face); return group;
 }
 
 function createMoveLayer(moves: GroupFlip[]): SVGGElement {
@@ -164,24 +226,36 @@ function createMoveLayer(moves: GroupFlip[]): SVGGElement {
   for (const move of moves) {
     const group = createSvgElement("g"); group.classList.add("move"); group.setAttribute("role", "button"); group.setAttribute("tabindex", "0");
     group.setAttribute("aria-label", moveLabel(move.hinge));
-    group.addEventListener("click", (event) => { event.stopPropagation(); beginFlip(move); });
     group.addEventListener("keydown", (event) => activateOnKeyboard(event, () => beginFlip(move)));
     for (const destination of move.destinations) {
-      const preview = createSvgElement("rect"); preview.classList.add("move__preview"); setAttributes(preview, { x: destination.column * CELL_SIZE + TILE_INSET, y: destination.row * CELL_SIZE + TILE_INSET, width: CELL_SIZE - TILE_INSET * 2, height: CELL_SIZE - TILE_INSET * 2, rx: 9 }); group.append(preview);
+      const preview = createSvgElement("rect"); preview.classList.add("move__preview");
+      setAttributes(preview, { x: destination.column * CELL_SIZE, y: destination.row * CELL_SIZE, width: CELL_SIZE, height: CELL_SIZE });
+      preview.addEventListener("click", (event) => { event.stopPropagation(); beginFlip(move); });
+      group.append(preview);
     }
-    group.append(createHingeHandle(move.hinge)); layer.append(group);
+    const boundary = createSvgElement("path"); boundary.classList.add("move__boundary");
+    boundary.setAttribute("d", createMoveBoundaryPath(move.destinations));
+    group.append(boundary); layer.append(group);
   }
   return layer;
 }
-function createHingeHandle(hinge: GroupHinge): SVGGElement {
-  const group = createSvgElement("g");
-  const hitTarget = createSvgElement("line"); hitTarget.classList.add("move__hit-target");
-  const line = createSvgElement("line"); line.classList.add("move__handle");
-  const segment = hingeGridSegment(hinge);
-  const attributes = { x1: segment.start.x * CELL_SIZE, x2: segment.end.x * CELL_SIZE, y1: segment.start.y * CELL_SIZE, y2: segment.end.y * CELL_SIZE };
-  setAttributes(hitTarget, attributes); setAttributes(line, attributes); group.append(hitTarget, line);
-  return group;
+
+function createMoveBoundaryPath(destinations: ReadonlyArray<{ column: number; row: number }>): string {
+  const occupied = new Set(destinations.map(({ column, row }) => `${column},${row}`));
+  const segments: string[] = [];
+  for (const { column, row } of destinations) {
+    const left = column * CELL_SIZE;
+    const top = row * CELL_SIZE;
+    const right = left + CELL_SIZE;
+    const bottom = top + CELL_SIZE;
+    if (!occupied.has(`${column},${row - 1}`)) segments.push(`M ${left} ${top} L ${right} ${top}`);
+    if (!occupied.has(`${column + 1},${row}`)) segments.push(`M ${right} ${top} L ${right} ${bottom}`);
+    if (!occupied.has(`${column},${row + 1}`)) segments.push(`M ${right} ${bottom} L ${left} ${bottom}`);
+    if (!occupied.has(`${column - 1},${row}`)) segments.push(`M ${left} ${bottom} L ${left} ${top}`);
+  }
+  return segments.join(" ");
 }
+
 function hingeGridSegment(hinge: GroupHinge): { start: Vertex; end: Vertex } {
   if (hinge.orientation === "diagonal") return hinge;
   return hinge.orientation === "horizontal"

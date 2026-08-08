@@ -79,20 +79,13 @@ h1 {
 }
 
 .tile__square {
+  fill: #f4b942;
   stroke: rgb(255 255 255 / 34%);
   stroke-width: 1.5;
   filter: drop-shadow(0 3px 3px rgb(0 0 0 / 35%));
   vector-effect: non-scaling-stroke;
 }
 
-.tile__label {
-  fill: #172033;
-  font-size: 25px;
-  font-weight: 800;
-  text-anchor: middle;
-  dominant-baseline: central;
-  pointer-events: none;
-}
 
 .status {
   min-height: 1.5em;
@@ -135,6 +128,10 @@ button:focus-visible {
   }
 }
 
+.tile {
+  touch-action: none;
+}
+
 .tile,
 .move {
   cursor: pointer;
@@ -147,34 +144,26 @@ button:focus-visible {
   filter: drop-shadow(0 0 7px rgb(255 235 89 / 95%)) drop-shadow(0 3px 3px rgb(0 0 0 / 35%));
 }
 
-.tile:focus-visible .tile__square,
-.move:focus-visible .move__preview {
+.tile:focus-visible .tile__square {
+  stroke: #ffffff;
+  stroke-width: 5;
+}
+
+.move:focus-visible .move__boundary {
   stroke: #ffffff;
   stroke-width: 5;
 }
 
 .move__preview {
   fill: rgb(255 235 89 / 28%);
+}
+
+.move__boundary {
+  fill: none;
   stroke: #fff07a;
   stroke-width: 3;
   stroke-dasharray: 7 5;
-  vector-effect: non-scaling-stroke;
-  pointer-events: none;
-}
-
-.move__hit-target {
-  fill: none;
-  stroke: transparent;
-  stroke-width: 44;
-  stroke-linecap: round;
-  pointer-events: stroke;
-}
-
-.move__handle {
-  fill: none;
-  stroke: rgb(255 240 122 / 88%);
-  stroke-width: 14;
-  stroke-linecap: round;
+  stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
 }
