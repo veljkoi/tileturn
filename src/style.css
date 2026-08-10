@@ -87,6 +87,14 @@ h1 {
 }
 
 
+.obstacle {
+  fill: #475569;
+  stroke: #293548;
+  stroke-width: 1.5;
+  filter: drop-shadow(0 3px 3px rgb(0 0 0 / 35%));
+  vector-effect: non-scaling-stroke;
+}
+
 .status {
   min-height: 1.5em;
   margin: 0.9rem 0 0.75rem;

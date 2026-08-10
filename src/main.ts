@@ -1,5 +1,6 @@
 import "./style.css";
 import { getLegalGroupFlips, isEdgeConnected, type GroupFlip, type GroupHinge, type Vertex } from "./geometry";
+import { generateObstacles } from "./obstacles";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const BOARD_COLUMNS = 8;
@@ -12,14 +13,15 @@ type Tile = { id: number; column: number; row: number };
 type ActiveFlip = { tileIds: number[]; move: GroupFlip };
 
 const INITIAL_TILES: ReadonlyArray<Tile> = [
-  { id: 1, column: 3, row: 6 },
-  { id: 2, column: 4, row: 6 },
-  { id: 3, column: 3, row: 7 },
-  { id: 4, column: 5, row: 7 },
-  { id: 5, column: 3, row: 8 },
+  { id: 1, column: 2, row: 14 },
+  { id: 2, column: 3, row: 14 },
+  { id: 3, column: 4, row: 14 },
+  { id: 4, column: 3, row: 15 },
+  { id: 5, column: 4, row: 15 },
 ];
 
 let tiles = cloneInitialTiles();
+let obstacles = generateObstacles({ columns: BOARD_COLUMNS, rows: BOARD_ROWS }, tiles);
 let selectedTileIds = new Set<number>();
 let activeFlip: ActiveFlip | null = null;
 let flipTimer: number | undefined;
@@ -53,6 +55,7 @@ function cloneInitialTiles(): Tile[] { return INITIAL_TILES.map((tile) => ({ ...
 function resetBoard(): void {
   window.clearTimeout(flipTimer);
   tiles = cloneInitialTiles(); selectedTileIds = new Set(); activeFlip = null;
+  obstacles = generateObstacles({ columns: BOARD_COLUMNS, rows: BOARD_ROWS }, tiles);
   renderBoard("Board reset to the starting arrangement.");
 }
 function changeSelection(tileId: number): void {
@@ -138,7 +141,7 @@ function selectionGuidance(): string {
 function getCurrentMoves(): GroupFlip[] {
   const selectedTiles = tiles.filter(({ id }) => selectedTileIds.has(id));
   return selectedTiles.length > 0 && !activeFlip
-    ? getLegalGroupFlips({ columns: BOARD_COLUMNS, rows: BOARD_ROWS }, selectedTiles, tiles.filter(({ id }) => !selectedTileIds.has(id)))
+    ? getLegalGroupFlips({ columns: BOARD_COLUMNS, rows: BOARD_ROWS }, selectedTiles, [...tiles.filter(({ id }) => !selectedTileIds.has(id)), ...obstacles])
     : [];
 }
 function beginFlip(move: GroupFlip): void {
@@ -184,6 +187,14 @@ function renderBoard(message?: string): void {
     setAttributes(cell, { x: column * CELL_SIZE, y: row * CELL_SIZE, width: CELL_SIZE, height: CELL_SIZE }); grid.append(cell);
   }
   board.append(grid);
+  const obstacleLayer = createSvgElement("g"); obstacleLayer.classList.add("obstacles");
+  for (const obstacle of obstacles) {
+    const element = createSvgElement("rect"); element.classList.add("obstacle");
+    setAttributes(element, { x: obstacle.column * CELL_SIZE + TILE_INSET, y: obstacle.row * CELL_SIZE + TILE_INSET, width: CELL_SIZE - TILE_INSET * 2, height: CELL_SIZE - TILE_INSET * 2, rx: 9 });
+    element.addEventListener("click", (event) => { event.stopPropagation(); clearSelection(); });
+    obstacleLayer.append(element);
+  }
+  board.append(obstacleLayer);
   const moves = getCurrentMoves();
   const tileLayer = createSvgElement("g"); tileLayer.classList.add("tiles");
   const flipGroup = createSvgElement("g");
