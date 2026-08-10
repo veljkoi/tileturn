@@ -1,6 +1,16 @@
 import { expect, test, type Page } from "@playwright/test";
 
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    let state = 15;
+    Math.random = () => {
+      state = (state * 1_664_525 + 1_013_904_223) >>> 0;
+      return state / 2 ** 32;
+    };
+  });
+});
+
 test("tiles use one color and omit visible identifiers", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator(".tile__label")).toHaveCount(0);
@@ -12,9 +22,10 @@ test("tiles use one color and omit visible identifiers", async ({ page }) => {
 
 test("dragging selects an edge-connected group", async ({ page }) => {
   await page.goto("/");
-  const first = page.getByRole("button", { name: "Tile at column 4, row 7" });
-  const second = page.getByRole("button", { name: "Tile at column 5, row 7" });
-  const third = page.getByRole("button", { name: "Tile at column 4, row 8" });
+  const first = page.getByRole("button", { name: "Tile at column 4, row 15" });
+  const second = page.getByRole("button", { name: "Tile at column 5, row 15" });
+  const third = page.getByRole("button", { name: "Tile at column 5, row 16" });
+  await first.scrollIntoViewIfNeeded();
   const firstBox = (await first.boundingBox())!;
   const secondBox = (await second.boundingBox())!;
   const thirdBox = (await third.boundingBox())!;
@@ -31,22 +42,22 @@ test("dragging selects an edge-connected group", async ({ page }) => {
 
 test("a player builds an edge-connected group and rejects disconnected changes", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Tile at column 4, row 7" }).click();
-  await page.getByRole("button", { name: "Tile at column 6, row 8" }).click();
+  await page.getByRole("button", { name: "Tile at column 4, row 15" }).click();
+  await page.getByRole("button", { name: "Tile at column 5, row 16" }).click();
   await expect(page.getByRole("status")).toContainText("not edge-connected");
-  await expect(page.getByRole("button", { name: "Tile at column 6, row 8" })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("button", { name: "Tile at column 5, row 16" })).toHaveAttribute("aria-pressed", "false");
 
-  await page.getByRole("button", { name: "Tile at column 5, row 7" }).click();
-  await page.getByRole("button", { name: "Tile at column 4, row 8" }).click();
-  await page.getByRole("button", { name: "Tile at column 4, row 7" }).press("Enter");
+  await page.getByRole("button", { name: "Tile at column 5, row 15" }).click();
+  await page.getByRole("button", { name: "Tile at column 4, row 16" }).click();
+  await page.getByRole("button", { name: "Tile at column 4, row 15" }).press("Enter");
   await expect(page.getByRole("status")).toContainText("split the group");
-  await expect(page.getByRole("button", { name: "Tile at column 4, row 7" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Tile at column 4, row 15" })).toHaveAttribute("aria-pressed", "true");
 });
 
 test("a selected group previews and completes one rigid legal flip", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Tile at column 4, row 7" }).click();
-  await page.getByRole("button", { name: "Tile at column 5, row 7" }).click();
+  await page.getByRole("button", { name: "Tile at column 4, row 15" }).click();
+  await page.getByRole("button", { name: "Tile at column 5, row 15" }).click();
   const northMove = page.getByRole("button", { name: "Flip selected group north" });
   await expect(northMove).toBeVisible();
   await expect(northMove.locator(".move__preview")).toHaveCount(2);
@@ -55,33 +66,33 @@ test("a selected group previews and completes one rigid legal flip", async ({ pa
   expect(boundaryPath?.match(/M /g)).toHaveLength(6);
   await expect(northMove.locator("line")).toHaveCount(0);
   await northMove.locator(".move__preview").first().click({ force: true });
-  await expect(page.getByRole("button", { name: "Tile at column 4, row 6" })).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByRole("button", { name: "Tile at column 5, row 6" })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("button", { name: "Tile at column 4, row 14" })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("button", { name: "Tile at column 5, row 14" })).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByRole("button", { name: /^Flip selected group/ })).toHaveCount(0);
 });
 
 test("any destination preview activates its complete move", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Tile at column 4, row 7" }).click();
-  await page.getByRole("button", { name: "Tile at column 5, row 7" }).click();
+  await page.getByRole("button", { name: "Tile at column 4, row 15" }).click();
+  await page.getByRole("button", { name: "Tile at column 5, row 15" }).click();
   const northMove = page.getByRole("button", { name: "Flip selected group north" });
   await northMove.locator(".move__preview").nth(1).click({ force: true });
-  await expect(page.getByRole("button", { name: "Tile at column 4, row 6" })).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByRole("button", { name: "Tile at column 5, row 6" })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("button", { name: "Tile at column 4, row 14" })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("button", { name: "Tile at column 5, row 14" })).toHaveAttribute("aria-pressed", "false");
 });
 
 test("preview activation locks board input and honors reduced motion", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Tile at column 4, row 7" }).click();
-  await page.getByRole("button", { name: "Tile at column 5, row 7" }).click();
+  await page.getByRole("button", { name: "Tile at column 4, row 15" }).click();
+  await page.getByRole("button", { name: "Tile at column 5, row 15" }).click();
   await page.getByRole("button", { name: "Flip selected group north" }).locator(".move__preview").first().click({ force: true });
-  await expect(page.getByRole("button", { name: "Tile at column 6, row 8" })).toHaveAttribute("tabindex", "-1");
+  await expect(page.getByRole("button", { name: "Tile at column 5, row 16" })).toHaveAttribute("tabindex", "-1");
   await expect(page.getByRole("status")).toContainText("flipping north");
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Reset" }).click();
-  await page.getByRole("button", { name: "Tile at column 4, row 7" }).click();
-  await page.getByRole("button", { name: "Tile at column 5, row 7" }).click();
+  await page.getByRole("button", { name: "Tile at column 4, row 15" }).click();
+  await page.getByRole("button", { name: "Tile at column 5, row 15" }).click();
   await page.getByRole("button", { name: "Flip selected group north" }).locator(".move__preview").first().click({ force: true });
   await expect(page.getByRole("status")).toContainText("Group flipped north. Selection cleared.");
 });
