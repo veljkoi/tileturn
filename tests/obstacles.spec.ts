@@ -25,18 +25,6 @@ test("renders 32 slate obstacles only in the middle rows", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Tile at column 5, row 16" })).toBeVisible();
 });
 
-test("reset creates a fresh obstacle layout and restores moving tiles", async ({ page }) => {
-  await page.goto("/");
-  const positions = async () => page.locator(".obstacle").evaluateAll((elements) =>
-    elements.map((element) => [element.getAttribute("x"), element.getAttribute("y")]),
-  );
-  const firstLayout = await positions();
-  await page.getByRole("button", { name: "Tile at column 4, row 15" }).click();
-  await page.getByRole("button", { name: "Reset" }).click();
-  expect(await positions()).not.toEqual(firstLayout);
-  await expect(page.getByRole("button", { name: "Tile at column 4, row 15" })).toHaveAttribute("aria-pressed", "false");
-});
-
 test("obstacles clear selection and block destination moves", async ({ page }) => {
   await page.goto("/");
   const tile = page.getByRole("button", { name: "Tile at column 3, row 15" });

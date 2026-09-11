@@ -24,40 +24,28 @@ let tiles = cloneInitialTiles();
 let obstacles = generateObstacles({ columns: BOARD_COLUMNS, rows: BOARD_ROWS }, tiles);
 let selectedTileIds = new Set<number>();
 let activeFlip: ActiveFlip | null = null;
-let flipTimer: number | undefined;
 type SelectionDrag = { pointerId: number; startTileId: number; startX: number; startY: number; dragging: boolean };
 let selectionDrag: SelectionDrag | null = null;
 let suppressNextTileClick = false;
 const app = document.querySelector<HTMLElement>("#app");
 if (!app) throw new Error("Tileturn requires an #app element.");
 
-const heading = document.createElement("h1");
-heading.textContent = "Tileturn";
-const intro = document.createElement("p");
-intro.className = "intro";
-intro.textContent = "Turn connected tiles over the grid.";
 const boardFrame = document.createElement("div");
 boardFrame.className = "board-frame";
-const status = document.createElement("p");
-status.className = "status";
-status.setAttribute("role", "status");
-const resetButton = document.createElement("button");
-resetButton.type = "button";
-resetButton.textContent = "Reset";
-resetButton.addEventListener("click", resetBoard);
-app.append(heading, intro, boardFrame, status, resetButton);
+const announcer = document.createElement("div");
+announcer.className = "visually-hidden";
+announcer.setAttribute("role", "status");
+announcer.setAttribute("aria-atomic", "true");
+const orientationMessage = document.createElement("p");
+orientationMessage.className = "orientation-message";
+orientationMessage.textContent = "Rotate your device to play.";
+app.append(boardFrame, announcer, orientationMessage);
 renderBoard("The board is ready. Select a tile to build a group.");
 window.addEventListener("pointermove", continueSelectionDrag, { passive: false });
 window.addEventListener("pointerup", finishSelectionDrag);
 window.addEventListener("pointercancel", finishSelectionDrag);
 
 function cloneInitialTiles(): Tile[] { return INITIAL_TILES.map((tile) => ({ ...tile })); }
-function resetBoard(): void {
-  window.clearTimeout(flipTimer);
-  tiles = cloneInitialTiles(); selectedTileIds = new Set(); activeFlip = null;
-  obstacles = generateObstacles({ columns: BOARD_COLUMNS, rows: BOARD_ROWS }, tiles);
-  renderBoard("Board reset to the starting arrangement.");
-}
 function changeSelection(tileId: number): void {
   if (activeFlip) return;
   const next = new Set(selectedTileIds);
@@ -150,7 +138,7 @@ function beginFlip(move: GroupFlip): void {
   activeFlip = { tileIds, move };
   renderBoard(`Selected group is flipping ${hingeDirection(move.hinge)}.`);
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) settleFlip();
-  else flipTimer = window.setTimeout(settleFlip, FLIP_DURATION_MS);
+  else window.setTimeout(settleFlip, FLIP_DURATION_MS);
 }
 function settleFlip(): void {
   if (!activeFlip) return;
@@ -216,7 +204,7 @@ function renderBoard(message?: string): void {
   board.append(tileLayer);
   if (moves.length > 0) board.append(createMoveLayer(moves));
   boardFrame.replaceChildren(board);
-  if (message !== undefined) status.textContent = message;
+  if (message !== undefined) announcer.textContent = message;
 }
 
 function createTileElement(tile: Tile): SVGGElement {
