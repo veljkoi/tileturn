@@ -90,7 +90,7 @@ test("preview activation locks board input and honors reduced motion", async ({ 
   await expect(page.getByRole("status")).toContainText("flipping north");
 
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.getByRole("button", { name: "Reset" }).click();
+  await page.reload();
   await page.getByRole("button", { name: "Tile at column 4, row 15" }).click();
   await page.getByRole("button", { name: "Tile at column 5, row 15" }).click();
   await page.getByRole("button", { name: "Flip selected group north" }).locator(".move__preview").first().click({ force: true });
