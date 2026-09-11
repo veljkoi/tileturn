@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type CDPSession, type Locator, type Page } from "@playwright/test";
 
 
 test.beforeEach(async ({ page }) => {
@@ -38,6 +38,66 @@ test("dragging selects an edge-connected group", async ({ page }) => {
   await expect(second).toHaveAttribute("aria-pressed", "true");
   await expect(third).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("status")).toContainText("Group of 3 selected");
+});
+
+test("a mobile touch drag selects each tile along a continuous path", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const first = page.getByRole("button", { name: "Tile at column 4, row 15" });
+  const second = page.getByRole("button", { name: "Tile at column 5, row 15" });
+  const third = page.getByRole("button", { name: "Tile at column 5, row 16" });
+  const client = await enableTouch(page);
+
+  await touchDrag(client, [await center(first), await center(second), await center(third)]);
+
+  await expect(first).toHaveAttribute("aria-pressed", "true");
+  await expect(second).toHaveAttribute("aria-pressed", "true");
+  await expect(third).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("status")).toContainText("Group of 3 selected");
+});
+
+test("a sparse fast touch move selects eligible tiles between events", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const first = page.getByRole("button", { name: "Tile at column 3, row 15" });
+  const middle = page.getByRole("button", { name: "Tile at column 4, row 15" });
+  const last = page.getByRole("button", { name: "Tile at column 5, row 15" });
+  const client = await enableTouch(page);
+
+  await touchDrag(client, [await center(first), await center(last)]);
+
+  await expect(first).toHaveAttribute("aria-pressed", "true");
+  await expect(middle).toHaveAttribute("aria-pressed", "true");
+  await expect(last).toHaveAttribute("aria-pressed", "true");
+});
+
+test("a cancelled touch drag restores the selection from before the gesture", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const preserved = page.getByRole("button", { name: "Tile at column 4, row 15" });
+  const dragStart = page.getByRole("button", { name: "Tile at column 3, row 15" });
+  await preserved.click();
+  const client = await enableTouch(page);
+
+  await touchDrag(client, [await center(dragStart), await center(preserved)], true);
+
+  await expect(dragStart).toHaveAttribute("aria-pressed", "false");
+  await expect(preserved).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /^Flip selected group/ })).not.toHaveCount(0);
+});
+
+test("a compatibility click after a touch drag does not toggle the ending tile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const first = page.getByRole("button", { name: "Tile at column 4, row 15" });
+  const last = page.getByRole("button", { name: "Tile at column 5, row 15" });
+  const client = await enableTouch(page);
+
+  await touchDrag(client, [await center(first), await center(last)]);
+  await last.dispatchEvent("click", { detail: 1 });
+
+  await expect(first).toHaveAttribute("aria-pressed", "true");
+  await expect(last).toHaveAttribute("aria-pressed", "true");
 });
 
 test("a player builds an edge-connected group and rejects disconnected changes", async ({ page }) => {
@@ -96,3 +156,36 @@ test("preview activation locks board input and honors reduced motion", async ({ 
   await page.getByRole("button", { name: "Flip selected group north" }).locator(".move__preview").first().click({ force: true });
   await expect(page.getByRole("status")).toContainText("Group flipped north. Selection cleared.");
 });
+
+async function enableTouch(page: Page): Promise<CDPSession> {
+  const client = await page.context().newCDPSession(page);
+  await client.send("Emulation.setTouchEmulationEnabled", { enabled: true });
+  return client;
+}
+
+async function center(locator: Locator): Promise<{ x: number; y: number }> {
+  const box = (await locator.boundingBox())!;
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+async function touchDrag(
+  client: CDPSession,
+  points: Array<{ x: number; y: number }>,
+  cancel = false,
+): Promise<void> {
+  const [start, ...moves] = points;
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ ...start, id: 1 }],
+  });
+  for (const point of moves) {
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ ...point, id: 1 }],
+    });
+  }
+  await client.send("Input.dispatchTouchEvent", {
+    type: cancel ? "touchCancel" : "touchEnd",
+    touchPoints: [],
+  });
+}

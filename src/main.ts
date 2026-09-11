@@ -8,6 +8,8 @@ const BOARD_ROWS = 16;
 const CELL_SIZE = 64;
 const TILE_INSET = 4;
 const FLIP_DURATION_MS = 350;
+const DRAG_THRESHOLD_PX = 8;
+const DRAG_SAMPLE_DISTANCE_PX = 4;
 
 type Tile = { id: number; column: number; row: number };
 type ActiveFlip = { tileIds: number[]; move: GroupFlip };
@@ -24,7 +26,16 @@ let tiles = cloneInitialTiles();
 let obstacles = generateObstacles({ columns: BOARD_COLUMNS, rows: BOARD_ROWS }, tiles);
 let selectedTileIds = new Set<number>();
 let activeFlip: ActiveFlip | null = null;
-type SelectionDrag = { pointerId: number; startTileId: number; startX: number; startY: number; dragging: boolean };
+type SelectionDrag = {
+  pointerId: number;
+  startTileId: number;
+  startX: number;
+  startY: number;
+  lastX: number;
+  lastY: number;
+  dragging: boolean;
+  initialTileIds: Set<number>;
+};
 let selectionDrag: SelectionDrag | null = null;
 let suppressNextTileClick = false;
 const app = document.querySelector<HTMLElement>("#app");
@@ -61,43 +72,97 @@ function changeSelection(tileId: number): void {
   else renderBoard(selectionGuidance());
 }
 function beginSelectionDrag(event: PointerEvent, tileId: number): void {
-  if (activeFlip || event.button !== 0) return;
-  selectionDrag = { pointerId: event.pointerId, startTileId: tileId, startX: event.clientX, startY: event.clientY, dragging: false };
-  (event.currentTarget as Element).setPointerCapture(event.pointerId);
+  if (activeFlip || selectionDrag || event.button !== 0) return;
+  suppressNextTileClick = false;
+  selectionDrag = {
+    pointerId: event.pointerId,
+    startTileId: tileId,
+    startX: event.clientX,
+    startY: event.clientY,
+    lastX: event.clientX,
+    lastY: event.clientY,
+    dragging: false,
+    initialTileIds: new Set(selectedTileIds),
+  };
 }
 
 function continueSelectionDrag(event: PointerEvent): void {
   const drag = selectionDrag;
   if (!drag || drag.pointerId !== event.pointerId) return;
-  if (!drag.dragging && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 8) return;
-  if (!drag.dragging) {
-    drag.dragging = true;
-    suppressNextTileClick = true;
-    startDragSelection(drag.startTileId);
-    document.querySelector(".moves")?.remove();
+  const samples = event.getCoalescedEvents?.() ?? [event];
+  for (const sample of samples.length > 0 ? samples : [event]) {
+    continueSelectionDragTo(sample.clientX, sample.clientY);
   }
-  event.preventDefault();
-  const tileElement = document.elementFromPoint(event.clientX, event.clientY)?.closest<SVGGElement>(".tile");
-  const tileId = Number(tileElement?.dataset.tile);
-  if (Number.isInteger(tileId)) addTileToDragSelection(tileId);
+  if (drag.dragging) event.preventDefault();
 }
 
 function finishSelectionDrag(event: PointerEvent): void {
   const drag = selectionDrag;
   if (!drag || drag.pointerId !== event.pointerId) return;
+  if (event.type === "pointerup") continueSelectionDragTo(event.clientX, event.clientY);
   selectionDrag = null;
   if (!drag.dragging) return;
   event.preventDefault();
+  if (event.type === "pointercancel") {
+    selectedTileIds = drag.initialTileIds;
+    renderBoard();
+    return;
+  }
+  suppressNextTileClick = true;
   renderBoard(selectionGuidance());
-  window.setTimeout(() => { suppressNextTileClick = false; }, 0);
 }
 
-function startDragSelection(tileId: number): void {
-  if (selectedTileIds.has(tileId)) return;
-  const extended = new Set(selectedTileIds).add(tileId);
-  const extendedTiles = tiles.filter(({ id }) => extended.has(id));
-  selectedTileIds = extended.size <= 5 && isEdgeConnected(extendedTiles) ? extended : new Set([tileId]);
+function continueSelectionDragTo(clientX: number, clientY: number): void {
+  const drag = selectionDrag;
+  if (!drag) return;
+  if (!drag.dragging && Math.hypot(clientX - drag.startX, clientY - drag.startY) < DRAG_THRESHOLD_PX) {
+    drag.lastX = clientX;
+    drag.lastY = clientY;
+    return;
+  }
+  if (!drag.dragging) {
+    drag.dragging = true;
+    startDragSelection(drag);
+    document.querySelector(".moves")?.remove();
+    drag.lastX = drag.startX;
+    drag.lastY = drag.startY;
+  }
+  addTilesAlongPath(drag.lastX, drag.lastY, clientX, clientY);
+  drag.lastX = clientX;
+  drag.lastY = clientY;
+}
+
+function startDragSelection(drag: SelectionDrag): void {
+  selectedTileIds = drag.initialTileIds.has(drag.startTileId)
+    ? new Set(drag.initialTileIds)
+    : new Set([drag.startTileId]);
   syncDraggedSelection();
+}
+
+function addTilesAlongPath(startX: number, startY: number, endX: number, endY: number): void {
+  const distance = Math.hypot(endX - startX, endY - startY);
+  const steps = Math.max(1, Math.ceil(distance / DRAG_SAMPLE_DISTANCE_PX));
+  for (let step = 0; step <= steps; step += 1) {
+    const progress = step / steps;
+    const tileId = tileIdAtClientPoint(
+      startX + (endX - startX) * progress,
+      startY + (endY - startY) * progress,
+    );
+    if (tileId !== undefined) addTileToDragSelection(tileId);
+  }
+}
+
+function tileIdAtClientPoint(clientX: number, clientY: number): number | undefined {
+  const board = document.querySelector<SVGSVGElement>(".board");
+  if (!board) return undefined;
+  const bounds = board.getBoundingClientRect();
+  if (
+    clientX < bounds.left || clientX >= bounds.right ||
+    clientY < bounds.top || clientY >= bounds.bottom
+  ) return undefined;
+  const column = Math.floor((clientX - bounds.left) / bounds.width * BOARD_COLUMNS);
+  const row = Math.floor((clientY - bounds.top) / bounds.height * BOARD_ROWS);
+  return tiles.find((tile) => tile.column === column && tile.row === row)?.id;
 }
 
 function addTileToDragSelection(tileId: number): void {
@@ -214,7 +279,14 @@ function createTileElement(tile: Tile): SVGGElement {
   group.setAttribute("aria-label", "Tile at column " + (tile.column + 1) + ", row " + (tile.row + 1));
   group.setAttribute("transform", `translate(${tile.column * CELL_SIZE} ${tile.row * CELL_SIZE})`);
   group.addEventListener("pointerdown", (event) => beginSelectionDrag(event, tile.id));
-  group.addEventListener("click", (event) => { event.stopPropagation(); if (suppressNextTileClick) { suppressNextTileClick = false; return; } changeSelection(tile.id); });
+  group.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (suppressNextTileClick && event.detail !== 0) {
+      suppressNextTileClick = false;
+      return;
+    }
+    changeSelection(tile.id);
+  });
   group.addEventListener("keydown", (event) => activateOnKeyboard(event, () => changeSelection(tile.id)));
   const square = createSvgElement("rect"); square.classList.add("tile__square"); setAttributes(square, { x: TILE_INSET, y: TILE_INSET, width: CELL_SIZE - TILE_INSET * 2, height: CELL_SIZE - TILE_INSET * 2, rx: 9 });
   const face = createSvgElement("g"); face.classList.add("tile__face"); const bounds = createSvgElement("rect"); bounds.classList.add("tile__face-bounds"); setAttributes(bounds, { width: CELL_SIZE, height: CELL_SIZE }); face.append(bounds, square); group.append(face); return group;
