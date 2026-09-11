@@ -73,6 +73,7 @@ body {
   aspect-ratio: 1 / 2;
   border-radius: 0.65rem;
   overflow: hidden;
+  touch-action: none;
 }
 
 .board__background {
@@ -121,10 +122,6 @@ body {
   color: #cbd7ea;
   font-size: 1rem;
   text-align: center;
-}
-
-.tile {
-  touch-action: none;
 }
 
 .tile,
